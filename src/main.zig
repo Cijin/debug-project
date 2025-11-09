@@ -1,6 +1,9 @@
 const std = @import("std");
+// https://codeberg.org/andrewrk/TrueType
+const TrueType = @import("TrueType");
 const builtin = @import("builtin");
 const common = @import("common.zig");
+const handmade = @import("handmade.zig");
 const dyn_lib = std.DynLib;
 const thread = std.Thread;
 const fs = std.fs;
@@ -16,17 +19,7 @@ const c = @cImport({
     @cInclude("X11/extensions/Xrandr.h");
 });
 
-const GameUpdateAndRendererFn = *fn (
-    *common.GameMemory,
-    *common.Input,
-    *common.OffScreenBuffer,
-) callconv(.c) void;
-
-var SourceModifiedAt: i128 = 0;
-const MaxRetryAttempt = 10;
-const GameCode = "src/handmade.zig";
-const SourceSo = "game_source/libhandmade.so";
-const TempSo = "game_source/temp_handmade.so";
+const FontPath = "font/font.ttf";
 const KiB = 1024;
 const MB = KiB * 1024;
 const GB = MB * 1024;
@@ -49,11 +42,17 @@ pub fn main() !u8 {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
+    // Todo: move to load font method
+    // Todo: replace max_size with file size
+    const font = try fs.cwd().readFileAlloc(arena.allocator(), FontPath, 1024 * 1024);
+    const ttf = try TrueType.load(font);
+
     // Todo: combine with linux state
     const game_memory = arena.allocator().create(common.GameMemory) catch unreachable;
     game_memory.* = common.GameMemory{
         .is_initialized = false,
         .game_state = arena.allocator().create(common.GameState) catch unreachable,
+        .ttf = &ttf,
     };
 
     var GlobalLinuxState = arena.allocator().create(common.LinuxState) catch unreachable;
@@ -137,15 +136,6 @@ pub fn main() !u8 {
     // window will not show up without sync
     _ = c.XSync(display, 0);
 
-    var game_lib = load_game_lib(arena.allocator()) catch {
-        std.debug.print("Exiting\n", .{});
-        return 1;
-    };
-    var dynamic_game_code = game_lib.lookup(
-        GameUpdateAndRendererFn,
-        "GameUpdateAndRenderer",
-    );
-
     var quit = false;
     var event: c.XEvent = undefined;
     var start_time = time.milliTimestamp();
@@ -153,16 +143,6 @@ pub fn main() !u8 {
     var time_per_frame: i64 = 0;
     var end_time: i64 = 0;
     while (!quit) {
-        if (game_code_changed()) {
-            game_lib.close();
-
-            game_lib = load_game_lib(arena.allocator()) catch {
-                return 1;
-            };
-
-            dynamic_game_code = game_lib.lookup(GameUpdateAndRendererFn, "GameUpdateAndRenderer");
-        }
-
         while (c.XPending(display) > 0) {
             _ = c.XNextEvent(display, &event);
             switch (event.type) {
@@ -244,15 +224,7 @@ pub fn main() !u8 {
             }
         }
 
-        if (dynamic_game_code) |dyn_gc| {
-            if (run_playback) {
-                read_linux_state(GlobalLinuxState) catch |err| {
-                    std.debug.print("Failed to read playback file: {any}\n", .{err});
-                    return 1;
-                };
-            }
-            dyn_gc(game_memory, GlobalLinuxState.game_input, &GlobalOffScreenBuffer);
-        }
+        handmade.GameUpdateAndRenderer(arena.allocator(), game_memory, GlobalLinuxState.game_input, &GlobalOffScreenBuffer);
 
         // Todo: RDTSC() to get cycles/frame
         end_time = time.milliTimestamp();
@@ -278,15 +250,14 @@ pub fn main() !u8 {
         assert(time_per_frame != 0);
         fps = @divTrunc(1000, time_per_frame);
 
-        std.debug.print("MsPerFrame: {d}\t FPS: {d}\t TargetFPS: {d}\n", .{
-            time_per_frame,
-            fps,
-            X11RefreshRate,
-        });
+        //std.debug.print("MsPerFrame: {d}\t FPS: {d}\t TargetFPS: {d}\n", .{
+        //    time_per_frame,
+        //    fps,
+        //    X11RefreshRate,
+        //});
         start_time = end_time;
     }
 
-    game_lib.close();
     return 0;
 }
 
@@ -354,79 +325,4 @@ fn write_linux_state(linux_state: *common.LinuxState) void {
     _ = linux_state.recording_file.?.write(buffer) catch |err| {
         std.debug.print("Failed to write input: {any}\n", .{err});
     };
-}
-
-fn game_code_changed() bool {
-    const cwd = fs.cwd();
-
-    const stat = cwd.statFile(GameCode) catch |err| {
-        std.debug.print("Failed to get source object file stat. Will retry next frame. Error={any}\n", .{err});
-        return false;
-    };
-
-    return stat.mtime != SourceModifiedAt;
-}
-
-fn copyFile(from: []const u8, to: []const u8) !void {
-    const cwd = fs.cwd();
-
-    try cwd.copyFile(from, cwd, to, .{});
-
-    const stat = try cwd.statFile(GameCode);
-    SourceModifiedAt = stat.mtime;
-}
-
-fn load_game_lib(allocator: mem.Allocator) !dyn_lib {
-    var retry_attempt: u8 = 0;
-
-    const cwd = fs.cwd();
-
-    const build_result = build_lib(allocator, cwd) catch |err| {
-        std.debug.print("{any}\n", .{err});
-        return err;
-    };
-
-    if (build_result != 0) {
-        return error.Error;
-    }
-
-    copyFile(SourceSo, TempSo) catch |err| {
-        std.debug.print("Failed to copy handmade lib: {any}\n", .{err});
-        return err;
-    };
-
-    const real_path = try fs.Dir.realpathAlloc(cwd, allocator, TempSo);
-
-    var game_lib: ?dyn_lib = null;
-    var lib_err: dyn_lib.Error = undefined;
-    while (retry_attempt <= MaxRetryAttempt) : (retry_attempt += 1) {
-        game_lib = dyn_lib.open(real_path) catch |err| {
-            std.debug.print("Failed to load handmade lib: {any}\n", .{err});
-            lib_err = err;
-
-            // Todo: this might no longer be needed or exponential retry
-            thread.sleep(1000000000);
-            continue;
-        };
-        return game_lib.?;
-    }
-
-    return lib_err;
-}
-
-fn build_lib(allocator: mem.Allocator, cwd: fs.Dir) !u8 {
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &[_][]const u8{
-            "zig",
-            "build-lib",
-            GameCode,
-            "-dynamic",
-            // Todo: use some sort of sprintf
-            "-femit-bin=game_source/libhandmade.so",
-        },
-        .cwd_dir = cwd,
-    });
-
-    return result.term.Exited;
 }

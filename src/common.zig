@@ -1,10 +1,12 @@
 const std = @import("std");
+const TrueType = @import("TrueType");
 const fs = std.fs;
 const mem = std.mem;
 
 pub const GameMemory = struct {
     is_initialized: bool,
     game_state: *GameState,
+    ttf: *const TrueType,
 
     pub fn init(self: *GameMemory) void {
         self.game_state.height_offset = 0;

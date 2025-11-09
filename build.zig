@@ -33,6 +33,14 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
 
+    const truetype_dep = b.dependency("TrueType", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const truetype = truetype_dep.module("TrueType"); // main raylib module
+    exe.root_module.addImport("TrueType", truetype);
+
     // Todo: static linking?
     exe.root_module.linkSystemLibrary("X11", .{ .needed = true });
     exe.root_module.linkSystemLibrary("Xrandr", .{ .needed = true });
