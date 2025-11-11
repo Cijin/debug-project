@@ -70,8 +70,8 @@ pub const InitialWindowHeight = 480;
 pub const OffScreenBuffer = struct {
     window_width: u32,
     window_height: u32,
-    // Todo: this might not work on resize
-    memory: [InitialWindowWidth][InitialWindowHeight]u32,
+    // Todo: this will not work on resize
+    memory: [InitialWindowHeight][InitialWindowWidth]u32,
     pitch: usize,
 
     pub fn get_memory_size(self: *OffScreenBuffer) usize {

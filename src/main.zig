@@ -295,7 +295,7 @@ fn render_game(
         @intCast(screen_buffer.window_width),
         @intCast(screen_buffer.window_height),
         BitmapPad,
-        0,
+        @intCast(@sizeOf(u32) * screen_buffer.window_width),
     );
 
     _ = c.XPutImage(display, window, gc, image, 0, 0, 0, 0, @intCast(screen_buffer.window_width), @intCast(screen_buffer.window_height));
