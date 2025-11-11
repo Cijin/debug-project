@@ -31,11 +31,12 @@ fn render_text(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
     defer text_buffer.deinit(allocator);
 
     const example = "testing";
-    // Todo: how does this scale work?
-    const scale = game_memory.ttf.scaleForPixelHeight(100);
+    // Todo: Remove black background in font and change font color
+    // Todo: how does scale translate to font pixel height
+    const scale = game_memory.ttf.scaleForPixelHeight(200);
     var it = std.unicode.Utf8View.initComptime(example).iterator();
 
-    const padding_y: usize = 100;
+    const padding_y: i16 = 400;
     const padding_x: usize = 100;
     var start: usize = 0;
     while (it.nextCodepoint()) |codepoint| {
@@ -49,8 +50,7 @@ fn render_text(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
             const pixels = text_buffer.items;
             for (0..dims.height) |j| {
                 for (0..dims.width, start..) |i, buff_i| {
-                    // Todo: add or subtract offset y to j to align letters
-                    buffer.memory[j + padding_y][padding_x + buff_i] = pixels[j * dims.width + i];
+                    buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i] = pixels[j * dims.width + i];
                 }
             }
 
