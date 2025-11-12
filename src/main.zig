@@ -112,7 +112,12 @@ pub fn main() !u8 {
         X11MsPerFrame = 1000 / X11RefreshRate;
     }
 
-    const gc = c.XCreateGC(display, window, 0, null);
+    // Todo: use a specific font, not sure where the current font is loaded from
+    // Todo: handle errors
+    const x11_font = c.XLoadFont(display, "*");
+    defer _ = c.XUnloadFont(display, x11_font);
+
+    const gc = c.XCreateGC(display, window, 0, @ptrCast(@constCast(&c.XGCValues{ .font = x11_font })));
 
     var delete_atom: c.Atom = undefined;
     delete_atom = c.XInternAtom(display, "WM_DELETE_WINDOW", 0);
@@ -299,6 +304,9 @@ fn render_game(
     );
 
     _ = c.XPutImage(display, window, gc, image, 0, 0, 0, 0, @intCast(screen_buffer.window_width), @intCast(screen_buffer.window_height));
+    const example = "Testing";
+    // Todo: use XDrawText instead
+    _ = c.XDrawString(display, window, gc, 20, 20, example, example.len);
 }
 
 // Todo: read entire file at once

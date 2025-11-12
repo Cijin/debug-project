@@ -33,7 +33,7 @@ fn render_text(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
     const example = "testing";
     // Todo: Remove black background in font and change font color
     // Todo: how does scale translate to font pixel height
-    const scale = game_memory.ttf.scaleForPixelHeight(200);
+    const scale = game_memory.ttf.scaleForPixelHeight(100);
     var it = std.unicode.Utf8View.initComptime(example).iterator();
 
     const padding_y: i16 = 400;
