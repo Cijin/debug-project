@@ -112,12 +112,7 @@ pub fn main() !u8 {
         X11MsPerFrame = 1000 / X11RefreshRate;
     }
 
-    // Todo: use a specific font, not sure where the current font is loaded from
-    // Todo: handle errors
-    const x11_font = c.XLoadFont(display, "*");
-    defer _ = c.XUnloadFont(display, x11_font);
-
-    const gc = c.XCreateGC(display, window, 0, @ptrCast(@constCast(&c.XGCValues{ .font = x11_font })));
+    const gc = c.XCreateGC(display, window, 0, null);
 
     var delete_atom: c.Atom = undefined;
     delete_atom = c.XInternAtom(display, "WM_DELETE_WINDOW", 0);
@@ -137,6 +132,10 @@ pub fn main() !u8 {
     );
 
     _ = c.XMapWindow(display, window);
+
+    // Todo: remove this at some point
+    // only done so I don't have to move it out of the way of the logs
+    _ = c.XMoveWindow(display, window, 1400, 300);
 
     // window will not show up without sync
     _ = c.XSync(display, 0);
@@ -242,7 +241,7 @@ pub fn main() !u8 {
             time_per_frame = end_time - start_time;
         }
 
-        render_game(
+        render(
             &GlobalOffScreenBuffer,
             display,
             window,
@@ -266,22 +265,7 @@ pub fn main() !u8 {
     return 0;
 }
 
-// Todo: this won't work for higher fps
-fn write_audio(server: ?*c.struct_pa_simple, sound_buffer: *common.SoundBuffer) void {
-    var error_code: c_int = 0;
-    const result = c.pa_simple_write(
-        server,
-        @ptrCast(sound_buffer.buffer),
-        sound_buffer.buffer.len * @sizeOf(i16),
-        &error_code,
-    );
-    if (result < 0) {
-        std.debug.print("Audio write error: {s}\n", .{c.pa_strerror(error_code)});
-        return;
-    }
-}
-
-fn render_game(
+fn render(
     screen_buffer: *common.OffScreenBuffer,
     display: ?*c.Display,
     window: c.Window,
@@ -304,9 +288,6 @@ fn render_game(
     );
 
     _ = c.XPutImage(display, window, gc, image, 0, 0, 0, 0, @intCast(screen_buffer.window_width), @intCast(screen_buffer.window_height));
-    const example = "Testing";
-    // Todo: use XDrawText instead
-    _ = c.XDrawString(display, window, gc, 20, 20, example, example.len);
 }
 
 // Todo: read entire file at once

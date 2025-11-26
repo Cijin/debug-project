@@ -26,14 +26,13 @@ fn handle_keypress_event(game_state: *common.GameState, input: *common.Input) vo
     }
 }
 
-fn render_text(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer: *common.OffScreenBuffer) void {
+fn render_font(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer: *common.OffScreenBuffer) void {
     var text_buffer: std.ArrayListUnmanaged(u8) = .empty;
     defer text_buffer.deinit(allocator);
 
-    const example = "testing";
-    // Todo: Remove black background in font and change font color
+    const example = "abcdefghijklmnopqrstuvwxyz1234567890";
     // Todo: how does scale translate to font pixel height
-    const scale = game_memory.ttf.scaleForPixelHeight(100);
+    const scale = game_memory.ttf.scaleForPixelHeight(50);
     var it = std.unicode.Utf8View.initComptime(example).iterator();
 
     const padding_y: i16 = 400;
@@ -50,7 +49,11 @@ fn render_text(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
             const pixels = text_buffer.items;
             for (0..dims.height) |j| {
                 for (0..dims.width, start..) |i, buff_i| {
-                    buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i] = pixels[j * dims.width + i];
+                    // Todo: handle buffer out of bounds
+                    if (pixels[j * dims.width + i] != 0) {
+                        // Note: the right hand side value is the font color
+                        buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i] = 0xffffff;
+                    }
                 }
             }
 
@@ -65,7 +68,7 @@ fn renderer(_: *common.GameState, buffer: *common.OffScreenBuffer) void {
             //const blue = j + game_state.width_offset;
             //const green = i + game_state.height_offset;
 
-            buffer.memory[i][j] = 0xffffffff;
+            buffer.memory[i][j] = 0x00;
         }
     }
 }
@@ -82,5 +85,5 @@ pub fn GameUpdateAndRenderer(
 
     handle_keypress_event(game_memory.game_state, input);
     renderer(game_memory.game_state, buffer);
-    render_text(allocator, game_memory, buffer);
+    render_font(allocator, game_memory, buffer);
 }
