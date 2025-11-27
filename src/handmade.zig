@@ -52,7 +52,7 @@ fn render_font(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
                     // Todo: handle buffer out of bounds
                     if (pixels[j * dims.width + i] != 0) {
                         // Note: the right hand side value is the font color
-                        buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i] = 0xffffff;
+                        buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i] = 0x00ff00;
                     }
                 }
             }
