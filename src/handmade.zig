@@ -30,9 +30,9 @@ fn render_font(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
     var text_buffer: std.ArrayListUnmanaged(u8) = .empty;
     defer text_buffer.deinit(allocator);
 
-    const example = "abcdefghijklmnopqrstuvwxyz1234567890";
+    const example = "antialiasing";
     // Todo: how does scale translate to font pixel height
-    const scale = game_memory.ttf.scaleForPixelHeight(50);
+    const scale = game_memory.ttf.scaleForPixelHeight(100);
     var it = std.unicode.Utf8View.initComptime(example).iterator();
 
     const padding_y: i16 = 400;
@@ -41,19 +41,31 @@ fn render_font(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
     while (it.nextCodepoint()) |codepoint| {
         if (game_memory.ttf.codepointGlyphIndex(codepoint)) |glyph| {
             text_buffer.clearRetainingCapacity();
-            const dims = game_memory.ttf.glyphBitmap(allocator, &text_buffer, glyph, scale, scale) catch |err| {
+            const dims = game_memory.ttf.glyphBitmapSubpixel(
+                allocator,
+                &text_buffer,
+                glyph,
+                scale,
+                scale,
+                0,
+                0,
+            ) catch |err| {
                 std.debug.print("Failed to get font dimensions: {any}\n", .{err});
                 return;
             };
 
             const pixels = text_buffer.items;
+            const font_color: u32 = 0x00ff0000;
             for (0..dims.height) |j| {
                 for (0..dims.width, start..) |i, buff_i| {
-                    // Todo: handle buffer out of bounds
-                    if (pixels[j * dims.width + i] != 0) {
-                        // Note: the right hand side value is the font color
-                        buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i] = 0x00ff00;
-                    }
+                    // Todo: handle line wrapping
+                    // Note: the right hand side value is the font color
+                    // Todo: blend in antialiased sections of the font with the background
+                    buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i] = font_color & @as(u32, @intCast(pixels[j * dims.width + i])) << 16;
+                    // pixels[j * dims.width + i] -> is transparency for a pixel;
+                    // buffer -> u32: 24 + transparency
+                    // 0 -> bg
+                    // 1-255 -> bg + x
                 }
             }
 
@@ -68,7 +80,7 @@ fn renderer(_: *common.GameState, buffer: *common.OffScreenBuffer) void {
             //const blue = j + game_state.width_offset;
             //const green = i + game_state.height_offset;
 
-            buffer.memory[i][j] = 0x00;
+            buffer.memory[i][j] = 0xffffffff;
         }
     }
 }
