@@ -41,14 +41,12 @@ fn render_font(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
     while (it.nextCodepoint()) |codepoint| {
         if (game_memory.ttf.codepointGlyphIndex(codepoint)) |glyph| {
             text_buffer.clearRetainingCapacity();
-            const dims = game_memory.ttf.glyphBitmapSubpixel(
+            const dims = game_memory.ttf.glyphBitmap(
                 allocator,
                 &text_buffer,
                 glyph,
                 scale,
                 scale,
-                0,
-                0,
             ) catch |err| {
                 std.debug.print("Failed to get font dimensions: {any}\n", .{err});
                 return;
@@ -61,14 +59,14 @@ fn render_font(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
                     // Todo: handle line wrapping
                     // Note: the right hand side value is the font color
                     // Todo: blend in antialiased sections of the font with the background
-                    buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i] = font_color & @as(u32, @intCast(pixels[j * dims.width + i])) << 16;
+                    buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i] = font_color | @as(u32, @intCast(pixels[j * dims.width + i])) << 24;
+                    std.debug.print("{b}\n", .{@as(u32, @intCast(pixels[j * dims.width + i])) << 24});
                     // pixels[j * dims.width + i] -> is transparency for a pixel;
                     // buffer -> u32: 24 + transparency
                     // 0 -> bg
                     // 1-255 -> bg + x
                 }
             }
-
             start += dims.width;
         }
     }
@@ -80,7 +78,7 @@ fn renderer(_: *common.GameState, buffer: *common.OffScreenBuffer) void {
             //const blue = j + game_state.width_offset;
             //const green = i + game_state.height_offset;
 
-            buffer.memory[i][j] = 0xffffffff;
+            buffer.memory[i][j] = 0x00ffffff;
         }
     }
 }
