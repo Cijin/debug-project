@@ -60,7 +60,7 @@ fn render_font(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
                     // Note: the right hand side value is the font color
                     // Todo: blend in antialiased sections of the font with the background
                     buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i] = font_color | @as(u32, @intCast(pixels[j * dims.width + i])) << 24;
-                    std.debug.print("{b}\n", .{@as(u32, @intCast(pixels[j * dims.width + i])) << 24});
+                    //std.debug.print("{b}\n", .{@as(u32, @intCast(pixels[j * dims.width + i])) << 24});
                     // pixels[j * dims.width + i] -> is transparency for a pixel;
                     // buffer -> u32: 24 + transparency
                     // 0 -> bg

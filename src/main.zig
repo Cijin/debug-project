@@ -17,6 +17,9 @@ const c = @cImport({
     @cInclude("X11/keysym.h");
     // https://www.x.org/archive/X11R7.6/doc/man/man3/Xrandr.3.xhtml
     @cInclude("X11/extensions/Xrandr.h");
+    // https://www.x.org/releases/current/doc/libXrender/libXrender.txt
+    // https://www.x.org/releases/current/doc/renderproto/renderproto.txt
+    @cInclude("X11/extensions/Xrender.h");
 });
 
 const FontPath = "font/font.ttf";
@@ -92,6 +95,7 @@ pub fn main() !u8 {
 
     const screen = c.XDefaultScreen(display);
 
+    // Todo: set window attribute (pictformat from xrender), don't ask me how
     const window_parent = c.XRootWindow(display, screen);
     const window = c.XCreateSimpleWindow(
         display,
@@ -277,7 +281,6 @@ fn render(
     const image = c.XCreateImage(
         display,
         wa.visual,
-        @intCast(wa.depth),
         c.ZPixmap,
         0,
         @ptrCast(&screen_buffer.memory),
@@ -287,7 +290,15 @@ fn render(
         @intCast(@sizeOf(u32) * screen_buffer.window_width),
     );
 
-    _ = c.XPutImage(display, window, gc, image, 0, 0, 0, 0, @intCast(screen_buffer.window_width), @intCast(screen_buffer.window_height));
+    // Note: xrender operations are server side (x11)
+    // Operations on the image are done once they are sent to the x11 server
+    const pixmap = c.XCreatePixmap(display, window, screen_buffer.window_width, screen_buffer.window_height, 0);
+    _ = c.XPutImage(display, pixmap, gc, image, 0, 0, 0, 0, @intCast(screen_buffer.window_width), @intCast(screen_buffer.window_height));
+    const pict_format = c.XRenderFindStandardFormat(display, c.PictStandardARGB32);
+    // Todo: XRenderComposite requires 3 pictures:
+    // Src, Mask, Dest: dest = (source IN mask) OP dest
+    // What should be the OP?
+    _ = c.XRenderCreatePicture(display, pixmap, pict_format, 0, null);
 }
 
 // Todo: read entire file at once
