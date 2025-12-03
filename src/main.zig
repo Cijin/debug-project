@@ -17,6 +17,7 @@ const c = @cImport({
     @cInclude("X11/keysym.h");
     // https://www.x.org/archive/X11R7.6/doc/man/man3/Xrandr.3.xhtml
     @cInclude("X11/extensions/Xrandr.h");
+    // https://ssp.impulsetrain.com/porterduff.html (understaning 'IN')
     // https://www.x.org/releases/current/doc/libXrender/libXrender.txt
     // https://www.x.org/releases/current/doc/renderproto/renderproto.txt
     @cInclude("X11/extensions/Xrender.h");
@@ -277,10 +278,17 @@ fn render(
 ) void {
     var wa: c.XWindowAttributes = undefined;
     _ = c.XGetWindowAttributes(display, window, &wa);
+    const screen = c.DefaultScreen(display);
+    const depth = c.DefaultDepth(display, screen);
+
+    // Note: xrender operations are server side (x11)
+    // Operations on the image are done once they are sent to the x11 server
+    const pixmap = c.XCreatePixmap(display, window, screen_buffer.window_width, screen_buffer.window_height, @intCast(depth));
 
     const image = c.XCreateImage(
         display,
         wa.visual,
+        @intCast(depth),
         c.ZPixmap,
         0,
         @ptrCast(&screen_buffer.memory),
@@ -289,16 +297,27 @@ fn render(
         BitmapPad,
         @intCast(@sizeOf(u32) * screen_buffer.window_width),
     );
-
-    // Note: xrender operations are server side (x11)
-    // Operations on the image are done once they are sent to the x11 server
-    const pixmap = c.XCreatePixmap(display, window, screen_buffer.window_width, screen_buffer.window_height, 0);
     _ = c.XPutImage(display, pixmap, gc, image, 0, 0, 0, 0, @intCast(screen_buffer.window_width), @intCast(screen_buffer.window_height));
+
     const pict_format = c.XRenderFindStandardFormat(display, c.PictStandardARGB32);
-    // Todo: XRenderComposite requires 3 pictures:
-    // Src, Mask, Dest: dest = (source IN mask) OP dest
-    // What should be the OP?
-    _ = c.XRenderCreatePicture(display, pixmap, pict_format, 0, null);
+    const src = c.XRenderCreatePicture(display, pixmap, pict_format, c.CPRepeat, null);
+    const dst = c.XRenderCreatePicture(display, window, pict_format, c.CPRepeat, null);
+
+    c.XRenderComposite(
+        display,
+        c.PictOpOver,
+        src,
+        0,
+        dst,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        @intCast(screen_buffer.window_width),
+        @intCast(screen_buffer.window_height),
+    );
 }
 
 // Todo: read entire file at once
