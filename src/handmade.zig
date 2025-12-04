@@ -7,6 +7,8 @@ const assert = std.debug.assert;
 const BlueOffset = 0x0000ff;
 const RedOffset = 0xff0000;
 const GreenOffset = 0x00ff00;
+const Bg = 0xffffffff;
+const FontColor = 0x00ff0000;
 
 fn handle_keypress_event(game_state: *common.GameState, input: *common.Input) void {
     switch (input.key) {
@@ -53,18 +55,26 @@ fn render_font(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
             };
 
             const pixels = text_buffer.items;
-            const font_color: u32 = 0x00ff0000;
             for (0..dims.height) |j| {
                 for (0..dims.width, start..) |i, buff_i| {
-                    // Todo: handle line wrapping
-                    // Note: the right hand side value is the font color
-                    // Todo: blend in antialiased sections of the font with the background
-                    buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i] = font_color | @as(u32, @intCast(pixels[j * dims.width + i])) << 24;
-                    //std.debug.print("{b}\n", .{@as(u32, @intCast(pixels[j * dims.width + i])) << 24});
-                    // pixels[j * dims.width + i] -> is transparency for a pixel;
-                    // buffer -> u32: 24 + transparency
-                    // 0 -> bg
-                    // 1-255 -> bg + x
+                    const alpha = pixels[j * dims.width + i];
+
+                    const bg = buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i];
+                    const bg_r = (bg >> 16) & 0xff;
+                    const bg_g = (bg >> 8) & 0xff;
+                    const bg_b = bg & 0xff;
+
+                    const fg_r: u32 = (FontColor >> 16) & 0xff;
+                    const fg_g: u32 = (FontColor >> 8) & 0xff;
+                    const fg_b: u32 = FontColor & 0xff;
+
+                    const inv_alpha = 255 - alpha;
+                    const r = (fg_r * alpha + bg_r * inv_alpha) / 255;
+                    const g = (fg_g * alpha + bg_g * inv_alpha) / 255;
+                    const b = (fg_b * alpha + bg_b * inv_alpha) / 255;
+
+                    buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i] =
+                        0xff000000 | (r << 16) | (g << 8) | b;
                 }
             }
             start += dims.width;

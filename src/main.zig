@@ -117,8 +117,6 @@ pub fn main() !u8 {
         X11MsPerFrame = 1000 / X11RefreshRate;
     }
 
-    const gc = c.XCreateGC(display, window, 0, null);
-
     var delete_atom: c.Atom = undefined;
     delete_atom = c.XInternAtom(display, "WM_DELETE_WINDOW", 0);
     const protocol_status = c.XSetWMProtocols(display, window, &delete_atom, 1);
@@ -235,7 +233,6 @@ pub fn main() !u8 {
 
         handmade.GameUpdateAndRenderer(arena.allocator(), game_memory, GlobalLinuxState.game_input, &GlobalOffScreenBuffer);
 
-        // Todo: RDTSC() to get cycles/frame
         end_time = time.milliTimestamp();
         time_per_frame = end_time - start_time;
         while (time_per_frame < X11MsPerFrame) {
@@ -246,12 +243,7 @@ pub fn main() !u8 {
             time_per_frame = end_time - start_time;
         }
 
-        render(
-            &GlobalOffScreenBuffer,
-            display,
-            window,
-            gc,
-        );
+        render(&GlobalOffScreenBuffer, display, window);
 
         end_time = time.milliTimestamp();
         time_per_frame = end_time - start_time;
@@ -259,35 +251,36 @@ pub fn main() !u8 {
         assert(time_per_frame != 0);
         fps = @divTrunc(1000, time_per_frame);
 
-        //std.debug.print("MsPerFrame: {d}\t FPS: {d}\t TargetFPS: {d}\n", .{
-        //    time_per_frame,
-        //    fps,
-        //    X11RefreshRate,
-        //});
+        std.debug.print("MsPerFrame: {d}\t FPS: {d}\t TargetFPS: {d}\n", .{
+            time_per_frame,
+            fps,
+            X11RefreshRate,
+        });
         start_time = end_time;
     }
 
     return 0;
 }
 
-fn render(
-    screen_buffer: *common.OffScreenBuffer,
-    display: ?*c.Display,
-    window: c.Window,
-    gc: c.GC,
-) void {
+// Todo: move pixmap, gc creation outside along with picture creation
+fn render(screen_buffer: *common.OffScreenBuffer, display: ?*c.Display, window: c.Window) void {
     var wa: c.XWindowAttributes = undefined;
     _ = c.XGetWindowAttributes(display, window, &wa);
-    const screen = c.DefaultScreen(display);
-    const depth = c.DefaultDepth(display, screen);
+    const depth = 32;
 
     // Note: xrender operations are server side (x11)
     // Operations on the image are done once they are sent to the x11 server
+    //
+    // Steps as I understand them so far:
+    // Write the bitmap onto a pixmap (client side) using putimage
+    // Create a picture from this pixmap
+    // Create a second picture on the window
+    // Composite the two pictures above
     const pixmap = c.XCreatePixmap(display, window, screen_buffer.window_width, screen_buffer.window_height, @intCast(depth));
 
     const image = c.XCreateImage(
         display,
-        wa.visual,
+        null,
         @intCast(depth),
         c.ZPixmap,
         0,
@@ -297,11 +290,15 @@ fn render(
         BitmapPad,
         @intCast(@sizeOf(u32) * screen_buffer.window_width),
     );
-    _ = c.XPutImage(display, pixmap, gc, image, 0, 0, 0, 0, @intCast(screen_buffer.window_width), @intCast(screen_buffer.window_height));
 
-    const pict_format = c.XRenderFindStandardFormat(display, c.PictStandardARGB32);
-    const src = c.XRenderCreatePicture(display, pixmap, pict_format, c.CPRepeat, null);
-    const dst = c.XRenderCreatePicture(display, window, pict_format, c.CPRepeat, null);
+    const pixmap_gc = c.XCreateGC(display, pixmap, 0, null);
+    _ = c.XPutImage(display, pixmap, pixmap_gc, image, 0, 0, 0, 0, @intCast(screen_buffer.window_width), @intCast(screen_buffer.window_height));
+
+    const src_format = c.XRenderFindStandardFormat(display, c.PictStandardARGB32);
+    const src = c.XRenderCreatePicture(display, pixmap, src_format, 0, null);
+
+    const dst_format = c.XRenderFindVisualFormat(display, wa.visual);
+    const dst = c.XRenderCreatePicture(display, window, dst_format, 0, null);
 
     c.XRenderComposite(
         display,
