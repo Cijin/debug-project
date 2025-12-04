@@ -1,14 +1,24 @@
 const std = @import("std");
-const common = @import("common.zig");
 const mem = std.mem;
+const time = std.time;
 const math = std.math;
 const assert = std.debug.assert;
+
+const common = @import("common.zig");
 
 const BlueOffset = 0x0000ff;
 const RedOffset = 0xff0000;
 const GreenOffset = 0x00ff00;
-const Bg = 0xffffffff;
 const FontColor = 0x00ff0000;
+const BackgroundColor = 0x00000000;
+
+const Bg = BackgroundColor;
+const Bg_r = (Bg >> 16) & 0xff;
+const Bg_g = (Bg >> 8) & 0xff;
+const Bg_b = Bg & 0xff;
+const Fg_r: u32 = (FontColor >> 16) & 0xff;
+const Fg_g: u32 = (FontColor >> 8) & 0xff;
+const Fg_b: u32 = FontColor & 0xff;
 
 fn handle_keypress_event(game_state: *common.GameState, input: *common.Input) void {
     switch (input.key) {
@@ -59,19 +69,10 @@ fn render_font(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
                 for (0..dims.width, start..) |i, buff_i| {
                     const alpha = pixels[j * dims.width + i];
 
-                    const bg = buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i];
-                    const bg_r = (bg >> 16) & 0xff;
-                    const bg_g = (bg >> 8) & 0xff;
-                    const bg_b = bg & 0xff;
-
-                    const fg_r: u32 = (FontColor >> 16) & 0xff;
-                    const fg_g: u32 = (FontColor >> 8) & 0xff;
-                    const fg_b: u32 = FontColor & 0xff;
-
                     const inv_alpha = 255 - alpha;
-                    const r = (fg_r * alpha + bg_r * inv_alpha) / 255;
-                    const g = (fg_g * alpha + bg_g * inv_alpha) / 255;
-                    const b = (fg_b * alpha + bg_b * inv_alpha) / 255;
+                    const r = (Fg_r * alpha + Bg_r * inv_alpha) / 255;
+                    const g = (Fg_g * alpha + Bg_g * inv_alpha) / 255;
+                    const b = (Fg_b * alpha + Bg_b * inv_alpha) / 255;
 
                     buffer.memory[j + @as(usize, @intCast(padding_y + dims.off_y))][padding_x + buff_i] =
                         0xff000000 | (r << 16) | (g << 8) | b;
@@ -82,13 +83,10 @@ fn render_font(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
     }
 }
 
-fn renderer(_: *common.GameState, buffer: *common.OffScreenBuffer) void {
+fn renderer_bg(_: *common.GameState, buffer: *common.OffScreenBuffer) void {
     for (0..buffer.window_height) |i| {
         for (0..buffer.window_width) |j| {
-            //const blue = j + game_state.width_offset;
-            //const green = i + game_state.height_offset;
-
-            buffer.memory[i][j] = 0x00ffffff;
+            buffer.memory[i][j] = BackgroundColor;
         }
     }
 }
@@ -104,6 +102,7 @@ pub fn GameUpdateAndRenderer(
     }
 
     handle_keypress_event(game_memory.game_state, input);
-    renderer(game_memory.game_state, buffer);
+    renderer_bg(game_memory.game_state, buffer);
+
     render_font(allocator, game_memory, buffer);
 }

@@ -28,6 +28,7 @@ const KiB = 1024;
 const MB = KiB * 1024;
 const GB = MB * 1024;
 const BitmapPad = 32;
+const PixmapDepth = 32;
 
 pub fn main() !u8 {
     var X11RefreshRate: u32 = 60;
@@ -143,6 +144,19 @@ pub fn main() !u8 {
     // window will not show up without sync
     _ = c.XSync(display, 0);
 
+    const pixmap = c.XCreatePixmap(display, window, @intCast(GlobalOffScreenBuffer.window_width), @intCast(GlobalOffScreenBuffer.window_height), @intCast(PixmapDepth));
+    defer _ = c.XFreePixmap(display, pixmap);
+
+    const pixmap_gc = c.XCreateGC(display, pixmap, 0, null);
+
+    const src_format = c.XRenderFindStandardFormat(display, c.PictStandardARGB32);
+    const src_picture = c.XRenderCreatePicture(display, pixmap, src_format, 0, null);
+
+    var wa: c.XWindowAttributes = undefined;
+    _ = c.XGetWindowAttributes(display, window, &wa);
+    const dst_format = c.XRenderFindVisualFormat(display, wa.visual);
+    const dst_picture = c.XRenderCreatePicture(display, window, dst_format, 0, null);
+
     var quit = false;
     var event: c.XEvent = undefined;
     var start_time = time.milliTimestamp();
@@ -243,7 +257,7 @@ pub fn main() !u8 {
             time_per_frame = end_time - start_time;
         }
 
-        render(&GlobalOffScreenBuffer, display, window);
+        render(&GlobalOffScreenBuffer, display, pixmap, pixmap_gc, src_picture, dst_picture);
 
         end_time = time.milliTimestamp();
         time_per_frame = end_time - start_time;
@@ -262,12 +276,7 @@ pub fn main() !u8 {
     return 0;
 }
 
-// Todo: move pixmap, gc creation outside along with picture creation
-fn render(screen_buffer: *common.OffScreenBuffer, display: ?*c.Display, window: c.Window) void {
-    var wa: c.XWindowAttributes = undefined;
-    _ = c.XGetWindowAttributes(display, window, &wa);
-    const depth = 32;
-
+fn render(screen_buffer: *common.OffScreenBuffer, display: ?*c.Display, pixmap: c.Pixmap, pixmap_gc: c.GC, src_picture: c.Picture, dst_picture: c.Picture) void {
     // Note: xrender operations are server side (x11)
     // Operations on the image are done once they are sent to the x11 server
     //
@@ -276,12 +285,10 @@ fn render(screen_buffer: *common.OffScreenBuffer, display: ?*c.Display, window: 
     // Create a picture from this pixmap
     // Create a second picture on the window
     // Composite the two pictures above
-    const pixmap = c.XCreatePixmap(display, window, screen_buffer.window_width, screen_buffer.window_height, @intCast(depth));
-
     const image = c.XCreateImage(
         display,
         null,
-        @intCast(depth),
+        @intCast(PixmapDepth),
         c.ZPixmap,
         0,
         @ptrCast(&screen_buffer.memory),
@@ -290,22 +297,14 @@ fn render(screen_buffer: *common.OffScreenBuffer, display: ?*c.Display, window: 
         BitmapPad,
         @intCast(@sizeOf(u32) * screen_buffer.window_width),
     );
-
-    const pixmap_gc = c.XCreateGC(display, pixmap, 0, null);
     _ = c.XPutImage(display, pixmap, pixmap_gc, image, 0, 0, 0, 0, @intCast(screen_buffer.window_width), @intCast(screen_buffer.window_height));
-
-    const src_format = c.XRenderFindStandardFormat(display, c.PictStandardARGB32);
-    const src = c.XRenderCreatePicture(display, pixmap, src_format, 0, null);
-
-    const dst_format = c.XRenderFindVisualFormat(display, wa.visual);
-    const dst = c.XRenderCreatePicture(display, window, dst_format, 0, null);
 
     c.XRenderComposite(
         display,
         c.PictOpOver,
-        src,
+        src_picture,
         0,
-        dst,
+        dst_picture,
         0,
         0,
         0,
