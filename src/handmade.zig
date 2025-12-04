@@ -44,7 +44,7 @@ fn render_font(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
 
     const example = "antialiasing";
     // Todo: how does scale translate to font pixel height
-    const scale = game_memory.ttf.scaleForPixelHeight(100);
+    const scale = game_memory.ttf.scaleForPixelHeight(25);
     var it = std.unicode.Utf8View.initComptime(example).iterator();
 
     const padding_y: i16 = 400;
