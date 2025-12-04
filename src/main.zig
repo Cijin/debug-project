@@ -30,9 +30,28 @@ const GB = MB * 1024;
 const BitmapPad = 32;
 const PixmapDepth = 32;
 
+const X11 = struct {
+    display: *c.Display,
+    screen: c_int,
+    refresh_rate: u32,
+    mpf: u32,
+    pixmap: c.Pixmap,
+    pixmap_gc: c.GC,
+    dst_picture: c.Picture,
+    src_picture: c.Picture,
+};
+
 pub fn main() !u8 {
-    var X11RefreshRate: u32 = 60;
-    var X11MsPerFrame = 1000 / X11RefreshRate;
+    var x11 = X11{
+        .display = undefined,
+        .screen = undefined,
+        .refresh_rate = 60,
+        .mpf = 1000 / 60,
+        .pixmap = undefined,
+        .pixmap_gc = undefined,
+        .dst_picture = undefined,
+        .src_picture = undefined,
+    };
     var run_playback: bool = false;
     var is_recording: bool = false;
 
@@ -88,74 +107,72 @@ pub fn main() !u8 {
     GlobalOffScreenBuffer.pitch = 0;
 
     // On a POSIX-conformant system, if the display_name is NULL, it defaults to the value of the DISPLAY environment variable.
-    const display = c.XOpenDisplay(null) orelse {
+    x11.display = c.XOpenDisplay(null) orelse {
         std.debug.print("failed to open display", .{});
 
         return 1;
     };
-    defer _ = c.XCloseDisplay(display);
+    defer _ = c.XCloseDisplay(x11.display);
 
-    const screen = c.XDefaultScreen(display);
-
-    // Todo: set window attribute (pictformat from xrender), don't ask me how
-    const window_parent = c.XRootWindow(display, screen);
+    x11.screen = c.XDefaultScreen(x11.display);
+    const root_window = c.XRootWindow(x11.display, x11.screen);
     const window = c.XCreateSimpleWindow(
-        display,
-        window_parent,
+        x11.display,
+        root_window,
         0,
         0,
         @intCast(GlobalOffScreenBuffer.window_width),
         @intCast(GlobalOffScreenBuffer.window_height),
         0,
-        c.XBlackPixel(display, screen),
-        c.XBlackPixel(display, screen),
+        c.XBlackPixel(x11.display, x11.screen),
+        c.XBlackPixel(x11.display, x11.screen),
     );
 
-    const XRRScreenConf = c.XRRGetScreenInfo(display, window);
+    const XRRScreenConf = c.XRRGetScreenInfo(x11.display, window);
     const XRRCurrentRate = c.XRRConfigCurrentRate(XRRScreenConf);
     if (XRRCurrentRate > 0) {
-        X11RefreshRate = @intCast(XRRCurrentRate);
-        X11MsPerFrame = 1000 / X11RefreshRate;
+        x11.refresh_rate = @intCast(XRRCurrentRate);
+        x11.mpf = 1000 / x11.refresh_rate;
     }
 
     var delete_atom: c.Atom = undefined;
-    delete_atom = c.XInternAtom(display, "WM_DELETE_WINDOW", 0);
-    const protocol_status = c.XSetWMProtocols(display, window, &delete_atom, 1);
+    delete_atom = c.XInternAtom(x11.display, "WM_DELETE_WINDOW", 0);
+    const protocol_status = c.XSetWMProtocols(x11.display, window, &delete_atom, 1);
     if (protocol_status == 0) {
         std.debug.print("failed to set wm_delete protocol", .{});
         return 1;
     }
 
-    _ = c.XStoreName(display, window, "Handmade");
+    _ = c.XStoreName(x11.display, window, "Handmade");
 
     // events don't get triggered without masks
     _ = c.XSelectInput(
-        display,
+        x11.display,
         window,
         c.KeyPressMask | c.KeyReleaseMask | c.StructureNotifyMask | c.PointerMotionMask | c.ButtonPressMask | c.ButtonReleaseMask,
     );
 
-    _ = c.XMapWindow(display, window);
+    _ = c.XMapWindow(x11.display, window);
 
     // Todo: remove this at some point
     // only done so I don't have to move it out of the way of the logs
-    _ = c.XMoveWindow(display, window, 1400, 300);
+    _ = c.XMoveWindow(x11.display, window, 1400, 300);
 
     // window will not show up without sync
-    _ = c.XSync(display, 0);
+    _ = c.XSync(x11.display, 0);
 
-    const pixmap = c.XCreatePixmap(display, window, @intCast(GlobalOffScreenBuffer.window_width), @intCast(GlobalOffScreenBuffer.window_height), @intCast(PixmapDepth));
-    defer _ = c.XFreePixmap(display, pixmap);
+    x11.pixmap = c.XCreatePixmap(x11.display, window, @intCast(GlobalOffScreenBuffer.window_width), @intCast(GlobalOffScreenBuffer.window_height), @intCast(PixmapDepth));
+    defer _ = c.XFreePixmap(x11.display, x11.pixmap);
 
-    const pixmap_gc = c.XCreateGC(display, pixmap, 0, null);
+    x11.pixmap_gc = c.XCreateGC(x11.display, x11.pixmap, 0, null);
 
-    const src_format = c.XRenderFindStandardFormat(display, c.PictStandardARGB32);
-    const src_picture = c.XRenderCreatePicture(display, pixmap, src_format, 0, null);
+    const src_format = c.XRenderFindStandardFormat(x11.display, c.PictStandardARGB32);
+    x11.src_picture = c.XRenderCreatePicture(x11.display, x11.pixmap, src_format, 0, null);
 
     var wa: c.XWindowAttributes = undefined;
-    _ = c.XGetWindowAttributes(display, window, &wa);
-    const dst_format = c.XRenderFindVisualFormat(display, wa.visual);
-    const dst_picture = c.XRenderCreatePicture(display, window, dst_format, 0, null);
+    _ = c.XGetWindowAttributes(x11.display, window, &wa);
+    const dst_format = c.XRenderFindVisualFormat(x11.display, wa.visual);
+    x11.dst_picture = c.XRenderCreatePicture(x11.display, window, dst_format, 0, null);
 
     var quit = false;
     var event: c.XEvent = undefined;
@@ -164,8 +181,8 @@ pub fn main() !u8 {
     var time_per_frame: i64 = 0;
     var end_time: i64 = 0;
     while (!quit) {
-        while (c.XPending(display) > 0) {
-            _ = c.XNextEvent(display, &event);
+        while (c.XPending(x11.display) > 0) {
+            _ = c.XNextEvent(x11.display, &event);
             switch (event.type) {
                 c.KeyPress => {
                     const keysym = c.XLookupKeysym(&event.xkey, 0);
@@ -249,15 +266,15 @@ pub fn main() !u8 {
 
         end_time = time.milliTimestamp();
         time_per_frame = end_time - start_time;
-        while (time_per_frame < X11MsPerFrame) {
-            const sleep_time: u64 = @intCast(@divTrunc((X11MsPerFrame - time_per_frame), 1000));
+        while (time_per_frame < x11.mpf) {
+            const sleep_time: u64 = @intCast(@divTrunc((x11.mpf - time_per_frame), 1000));
             thread.sleep(sleep_time);
 
             end_time = time.milliTimestamp();
             time_per_frame = end_time - start_time;
         }
 
-        render(&GlobalOffScreenBuffer, display, pixmap, pixmap_gc, src_picture, dst_picture);
+        render(&GlobalOffScreenBuffer, x11);
 
         end_time = time.milliTimestamp();
         time_per_frame = end_time - start_time;
@@ -268,7 +285,7 @@ pub fn main() !u8 {
         std.debug.print("MsPerFrame: {d}\t FPS: {d}\t TargetFPS: {d}\n", .{
             time_per_frame,
             fps,
-            X11RefreshRate,
+            x11.refresh_rate,
         });
         start_time = end_time;
     }
@@ -276,7 +293,7 @@ pub fn main() !u8 {
     return 0;
 }
 
-fn render(screen_buffer: *common.OffScreenBuffer, display: ?*c.Display, pixmap: c.Pixmap, pixmap_gc: c.GC, src_picture: c.Picture, dst_picture: c.Picture) void {
+fn render(screen_buffer: *common.OffScreenBuffer, x11: X11) void {
     // Note: xrender operations are server side (x11)
     // Operations on the image are done once they are sent to the x11 server
     //
@@ -286,7 +303,7 @@ fn render(screen_buffer: *common.OffScreenBuffer, display: ?*c.Display, pixmap: 
     // Create a second picture on the window
     // Composite the two pictures above
     const image = c.XCreateImage(
-        display,
+        x11.display,
         null,
         @intCast(PixmapDepth),
         c.ZPixmap,
@@ -297,14 +314,14 @@ fn render(screen_buffer: *common.OffScreenBuffer, display: ?*c.Display, pixmap: 
         BitmapPad,
         @intCast(@sizeOf(u32) * screen_buffer.window_width),
     );
-    _ = c.XPutImage(display, pixmap, pixmap_gc, image, 0, 0, 0, 0, @intCast(screen_buffer.window_width), @intCast(screen_buffer.window_height));
+    _ = c.XPutImage(x11.display, x11.pixmap, x11.pixmap_gc, image, 0, 0, 0, 0, @intCast(screen_buffer.window_width), @intCast(screen_buffer.window_height));
 
     c.XRenderComposite(
-        display,
+        x11.display,
         c.PictOpOver,
-        src_picture,
+        x11.src_picture,
         0,
-        dst_picture,
+        x11.dst_picture,
         0,
         0,
         0,

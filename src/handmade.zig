@@ -47,6 +47,7 @@ fn render_font(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer
     const scale = game_memory.ttf.scaleForPixelHeight(25);
     var it = std.unicode.Utf8View.initComptime(example).iterator();
 
+    // Todo: improve this
     const padding_y: i16 = 400;
     const padding_x: usize = 100;
     var start: usize = 0;
