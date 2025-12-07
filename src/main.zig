@@ -77,6 +77,8 @@ pub fn main() !u8 {
         .is_initialized = false,
         .game_state = arena.allocator().create(common.GameState) catch unreachable,
         .ttf = &ttf,
+        .fps = 0,
+        .time_per_frame = 0,
     };
 
     var GlobalLinuxState = arena.allocator().create(common.LinuxState) catch unreachable;
@@ -257,11 +259,14 @@ pub fn main() !u8 {
                 c.ConfigureNotify => {
                     // Todo: currently window width and height is fixed, can be "streched" once
                     // prototyping is done
+                    // Todo: resize window buffer
                 },
                 else => continue,
             }
         }
 
+        game_memory.fps = fps;
+        game_memory.time_per_frame = time_per_frame;
         handmade.GameUpdateAndRenderer(arena.allocator(), game_memory, GlobalLinuxState.game_input, &GlobalOffScreenBuffer);
 
         end_time = time.milliTimestamp();
@@ -280,13 +285,8 @@ pub fn main() !u8 {
         time_per_frame = end_time - start_time;
 
         assert(time_per_frame != 0);
-        fps = @divTrunc(1000, time_per_frame);
 
-        std.debug.print("MsPerFrame: {d}\t FPS: {d}\t TargetFPS: {d}\n", .{
-            time_per_frame,
-            fps,
-            x11.refresh_rate,
-        });
+        fps = @divTrunc(1000, time_per_frame);
         start_time = end_time;
     }
 

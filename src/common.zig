@@ -5,6 +5,8 @@ const mem = std.mem;
 
 pub const GameMemory = struct {
     is_initialized: bool,
+    fps: i64,
+    time_per_frame: i64,
     game_state: *GameState,
     ttf: *const TrueType,
 
