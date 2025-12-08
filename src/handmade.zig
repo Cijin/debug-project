@@ -11,17 +11,12 @@ const common = @import("common.zig");
 
 const Space = 5; // just a guess (in px)
 
-const BlueOffset = 0x0000ff;
-const RedOffset = 0xff0000;
-const GreenOffset = 0x00ff00;
-const FontColor = 0x00ff0000;
-const BackgroundColor = 0x00000000;
-
-const Bg = BackgroundColor;
+const Bg = 0x00000000;
 const Bg_r = (Bg >> 16) & 0xff;
 const Bg_g = (Bg >> 8) & 0xff;
 const Bg_b = Bg & 0xff;
 
+const FontColor = 0x00ff0000;
 const Fg_r: u32 = (FontColor >> 16) & 0xff;
 const Fg_g: u32 = (FontColor >> 8) & 0xff;
 const Fg_b: u32 = FontColor & 0xff;
@@ -45,7 +40,7 @@ fn handle_keypress_event(game_state: *common.GameState, input: *common.Input) vo
 }
 
 fn render_fps_info(allocator: mem.Allocator, game_memory: *common.GameMemory, buffer: *common.OffScreenBuffer) void {
-    var text_buffer: std.ArrayListUnmanaged(u8) = .empty;
+    var text_buffer: std.ArrayList(u8) = .empty;
     defer text_buffer.deinit(allocator);
 
     var buf: [1024]u8 = undefined;
@@ -61,7 +56,6 @@ fn render_fps_info(allocator: mem.Allocator, game_memory: *common.GameMemory, bu
     const utf8View = std.unicode.Utf8View.init(fps_info) catch unreachable;
     var it = utf8View.iterator();
 
-    // Todo: improve this
     var start: usize = 0;
     var dims: TrueType.GlyphBitmap = undefined;
     var glyph: TrueType.GlyphIndex = undefined;
@@ -108,10 +102,27 @@ fn render_fps_info(allocator: mem.Allocator, game_memory: *common.GameMemory, bu
     }
 }
 
+fn render_vertical_line(_: *common.GameState, buffer: *common.OffScreenBuffer) void {
+    const y = buffer.window_width / 2;
+    for (0..buffer.window_height - 50) |i| {
+        for (y..y + 1) |j| {
+            buffer.memory[i][j] = FontColor;
+        }
+    }
+}
+
+fn render_line(_: *common.GameState, buffer: *common.OffScreenBuffer) void {
+    for (buffer.window_height - 50..buffer.window_height - 49) |i| {
+        for (0..buffer.window_width) |j| {
+            buffer.memory[i][j] = FontColor;
+        }
+    }
+}
+
 fn renderer_bg(_: *common.GameState, buffer: *common.OffScreenBuffer) void {
     for (0..buffer.window_height) |i| {
         for (0..buffer.window_width) |j| {
-            buffer.memory[i][j] = BackgroundColor;
+            buffer.memory[i][j] = Bg;
         }
     }
 }
@@ -127,7 +138,9 @@ pub fn GameUpdateAndRenderer(
     }
 
     handle_keypress_event(game_memory.game_state, input);
-    renderer_bg(game_memory.game_state, buffer);
 
+    renderer_bg(game_memory.game_state, buffer);
     render_fps_info(allocator, game_memory, buffer);
+    render_line(game_memory.game_state, buffer);
+    render_vertical_line(game_memory.game_state, buffer);
 }
