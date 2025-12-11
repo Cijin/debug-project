@@ -33,18 +33,42 @@ const PixmapDepth = 32;
 const X11 = struct {
     display: *c.Display,
     screen: c_int,
+    window: c_ulong,
     refresh_rate: u32,
     mpf: u32,
     pixmap: c.Pixmap,
     pixmap_gc: c.GC,
     dst_picture: c.Picture,
     src_picture: c.Picture,
+
+    fn set_pixmap(self: *X11, height: u32, width: u32) void {
+        self.pixmap = c.XCreatePixmap(self.display, self.window, @intCast(width), @intCast(height), @intCast(PixmapDepth));
+        self.pixmap_gc = c.XCreateGC(self.display, self.pixmap, 0, null);
+
+        const updated_format = c.XRenderFindStandardFormat(self.display, c.PictStandardARGB32);
+        self.src_picture = c.XRenderCreatePicture(self.display, self.pixmap, updated_format, 0, null);
+
+        var updated_wa: c.XWindowAttributes = undefined;
+        _ = c.XGetWindowAttributes(self.display, self.window, &updated_wa);
+        const updated_dst_format = c.XRenderFindVisualFormat(self.display, updated_wa.visual);
+        self.dst_picture = c.XRenderCreatePicture(self.display, self.window, updated_dst_format, 0, null);
+    }
 };
 
 pub fn main() !u8 {
+    // Todo: this could be done better?
+    // total_mem = [ game_state audio_buffer screen_buffer]
+    // allocate(total_mem)
+    // game_state = total_mem[0..@sizeOf(game_state)]
+    // game_state.audio -> total_mem[@sizeOf(game_state)..@sizeOf(audio_buffer)]
+    // audio_buffer = total_mem[0..@sizeOf(audio_buffer)]
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
     var x11 = X11{
         .display = undefined,
         .screen = undefined,
+        .window = undefined,
         .refresh_rate = 60,
         .mpf = 1000 / 60,
         .pixmap = undefined,
@@ -54,17 +78,6 @@ pub fn main() !u8 {
     };
     var run_playback: bool = false;
     var is_recording: bool = false;
-
-    var GlobalOffScreenBuffer: common.OffScreenBuffer = undefined;
-
-    // Todo: this could be done better?
-    // total_mem = [ game_state audio_buffer screen_buffer]
-    // allocate(total_mem)
-    // game_state = total_mem[0..@sizeOf(game_state)]
-    // game_state.audio -> total_mem[@sizeOf(game_state)..@sizeOf(audio_buffer)]
-    // audio_buffer = total_mem[0..@sizeOf(audio_buffer)]
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
 
     // Todo: move to load font method
     // Todo: replace max_size with file size
@@ -104,10 +117,6 @@ pub fn main() !u8 {
     };
     defer GlobalLinuxState.deinit();
 
-    GlobalOffScreenBuffer.window_width = common.InitialWindowWidth;
-    GlobalOffScreenBuffer.window_height = common.InitialWindowHeight;
-    GlobalOffScreenBuffer.pitch = 0;
-
     // On a POSIX-conformant system, if the display_name is NULL, it defaults to the value of the DISPLAY environment variable.
     x11.display = c.XOpenDisplay(null) orelse {
         std.debug.print("failed to open display", .{});
@@ -116,9 +125,16 @@ pub fn main() !u8 {
     };
     defer _ = c.XCloseDisplay(x11.display);
 
+    var GlobalOffScreenBuffer = common.OffScreenBuffer{
+        .window_width = common.InitialWindowWidth,
+        .window_height = common.InitialWindowHeight,
+        .memory = get_memory(common.InitialWindowHeight, common.InitialWindowWidth, arena.allocator()) catch unreachable,
+        .pitch = 0,
+    };
+
     x11.screen = c.XDefaultScreen(x11.display);
     const root_window = c.XRootWindow(x11.display, x11.screen);
-    const window = c.XCreateSimpleWindow(
+    x11.window = c.XCreateSimpleWindow(
         x11.display,
         root_window,
         0,
@@ -130,7 +146,7 @@ pub fn main() !u8 {
         c.XBlackPixel(x11.display, x11.screen),
     );
 
-    const XRRScreenConf = c.XRRGetScreenInfo(x11.display, window);
+    const XRRScreenConf = c.XRRGetScreenInfo(x11.display, x11.window);
     const XRRCurrentRate = c.XRRConfigCurrentRate(XRRScreenConf);
     if (XRRCurrentRate > 0) {
         x11.refresh_rate = @intCast(XRRCurrentRate);
@@ -139,42 +155,31 @@ pub fn main() !u8 {
 
     var delete_atom: c.Atom = undefined;
     delete_atom = c.XInternAtom(x11.display, "WM_DELETE_WINDOW", 0);
-    const protocol_status = c.XSetWMProtocols(x11.display, window, &delete_atom, 1);
+    const protocol_status = c.XSetWMProtocols(x11.display, x11.window, &delete_atom, 1);
     if (protocol_status == 0) {
         std.debug.print("failed to set wm_delete protocol", .{});
         return 1;
     }
 
-    _ = c.XStoreName(x11.display, window, "Handmade");
+    _ = c.XStoreName(x11.display, x11.window, "Handmade");
 
     // events don't get triggered without masks
     _ = c.XSelectInput(
         x11.display,
-        window,
+        x11.window,
         c.KeyPressMask | c.KeyReleaseMask | c.StructureNotifyMask | c.PointerMotionMask | c.ButtonPressMask | c.ButtonReleaseMask,
     );
 
-    _ = c.XMapWindow(x11.display, window);
+    _ = c.XMapWindow(x11.display, x11.window);
 
     // Todo: remove this at some point
     // only done so I don't have to move it out of the way of the logs
-    _ = c.XMoveWindow(x11.display, window, 1400, 300);
+    _ = c.XMoveWindow(x11.display, x11.window, 1400, 300);
 
     // window will not show up without sync
     _ = c.XSync(x11.display, 0);
 
-    x11.pixmap = c.XCreatePixmap(x11.display, window, @intCast(GlobalOffScreenBuffer.window_width), @intCast(GlobalOffScreenBuffer.window_height), @intCast(PixmapDepth));
-    defer _ = c.XFreePixmap(x11.display, x11.pixmap);
-
-    x11.pixmap_gc = c.XCreateGC(x11.display, x11.pixmap, 0, null);
-
-    const src_format = c.XRenderFindStandardFormat(x11.display, c.PictStandardARGB32);
-    x11.src_picture = c.XRenderCreatePicture(x11.display, x11.pixmap, src_format, 0, null);
-
-    var wa: c.XWindowAttributes = undefined;
-    _ = c.XGetWindowAttributes(x11.display, window, &wa);
-    const dst_format = c.XRenderFindVisualFormat(x11.display, wa.visual);
-    x11.dst_picture = c.XRenderCreatePicture(x11.display, window, dst_format, 0, null);
+    x11.set_pixmap(GlobalOffScreenBuffer.window_height, GlobalOffScreenBuffer.window_width);
 
     var quit = false;
     var event: c.XEvent = undefined;
@@ -257,9 +262,16 @@ pub fn main() !u8 {
                     }
                 },
                 c.ConfigureNotify => {
-                    // Todo: currently window width and height is fixed, can be "streched" once
-                    // prototyping is done
-                    // Todo: resize window buffer
+                    const height: u32 = @intCast(event.xconfigure.height);
+                    const width: u32 = @intCast(event.xconfigure.width);
+
+                    if (height != GlobalOffScreenBuffer.window_height or width != GlobalOffScreenBuffer.window_width) {
+                        GlobalOffScreenBuffer.window_height = height;
+                        GlobalOffScreenBuffer.window_width = width;
+                        GlobalOffScreenBuffer.memory = get_memory(height, width, arena.allocator()) catch unreachable;
+
+                        x11.set_pixmap(height, width);
+                    }
                 },
                 else => continue,
             }
@@ -308,7 +320,7 @@ fn render(screen_buffer: *common.OffScreenBuffer, x11: X11) void {
         @intCast(PixmapDepth),
         c.ZPixmap,
         0,
-        @ptrCast(&screen_buffer.memory),
+        @ptrCast(screen_buffer.memory),
         @intCast(screen_buffer.window_width),
         @intCast(screen_buffer.window_height),
         BitmapPad,
@@ -331,6 +343,15 @@ fn render(screen_buffer: *common.OffScreenBuffer, x11: X11) void {
         @intCast(screen_buffer.window_width),
         @intCast(screen_buffer.window_height),
     );
+}
+
+fn get_memory(h: u32, w: u32, allocator: mem.Allocator) ![][]u32 {
+    var memory = try allocator.alloc([]u32, h);
+    for (0..h) |i| {
+        memory[i] = try allocator.alloc(u32, w);
+    }
+
+    return memory;
 }
 
 // Todo: read entire file at once

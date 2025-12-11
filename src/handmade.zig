@@ -11,7 +11,7 @@ const common = @import("common.zig");
 
 const Space = 5; // just a guess (in px)
 
-const Bg = 0x00000000;
+const Bg = 0x000000ff;
 const Bg_r = (Bg >> 16) & 0xff;
 const Bg_g = (Bg >> 8) & 0xff;
 const Bg_b = Bg & 0xff;
@@ -89,7 +89,7 @@ fn render_fps_info(allocator: mem.Allocator, game_memory: *common.GameMemory, bu
             for (0..dims.width, start..) |i, buff_i| {
                 const alpha = pixels[j * dims.width + i];
 
-                const inv_alpha = 255 - alpha;
+                const inv_alpha: u32 = @intCast(255 - alpha);
                 const r = (Fg_r * alpha + Bg_r * inv_alpha) / 255;
                 const g = (Fg_g * alpha + Bg_g * inv_alpha) / 255;
                 const b = (Fg_b * alpha + Bg_b * inv_alpha) / 255;
