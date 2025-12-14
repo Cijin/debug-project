@@ -27,7 +27,6 @@ const FontPath = "font/font.ttf";
 const KiB = 1024;
 const MB = KiB * 1024;
 const GB = MB * 1024;
-const BitmapPad = 32;
 const PixmapDepth = 32;
 
 const X11 = struct {
@@ -45,13 +44,11 @@ const X11 = struct {
         self.pixmap = c.XCreatePixmap(self.display, self.window, @intCast(width), @intCast(height), @intCast(PixmapDepth));
         self.pixmap_gc = c.XCreateGC(self.display, self.pixmap, 0, null);
 
-        const updated_format = c.XRenderFindStandardFormat(self.display, c.PictStandardARGB32);
-        self.src_picture = c.XRenderCreatePicture(self.display, self.pixmap, updated_format, 0, null);
+        const src_format = c.XRenderFindStandardFormat(self.display, c.PictStandardARGB32);
+        self.src_picture = c.XRenderCreatePicture(self.display, self.pixmap, src_format, 0, null);
 
-        var updated_wa: c.XWindowAttributes = undefined;
-        _ = c.XGetWindowAttributes(self.display, self.window, &updated_wa);
-        const updated_dst_format = c.XRenderFindVisualFormat(self.display, updated_wa.visual);
-        self.dst_picture = c.XRenderCreatePicture(self.display, self.window, updated_dst_format, 0, null);
+        const dst_format = c.XRenderFindStandardFormat(self.display, c.PictStandardRGB24);
+        self.dst_picture = c.XRenderCreatePicture(self.display, self.window, dst_format, 0, null);
     }
 };
 
@@ -305,6 +302,8 @@ pub fn main() !u8 {
     return 0;
 }
 
+// Note: scaling without changing memory size:
+// https://stackoverflow.com/questions/66885643/how-to-render-a-scaled-pixel-buffer-with-xlib-xrender
 fn render(screen_buffer: *common.OffScreenBuffer, x11: X11) void {
     // Note: xrender operations are server side (x11)
     // Operations on the image are done once they are sent to the x11 server
@@ -317,13 +316,17 @@ fn render(screen_buffer: *common.OffScreenBuffer, x11: X11) void {
     const image = c.XCreateImage(
         x11.display,
         null,
-        @intCast(PixmapDepth),
+        PixmapDepth,
         c.ZPixmap,
         0,
+        // Todo: test if flattening the memory to a 1d array helps
+        // Todo: test other ways to render to window
         @ptrCast(screen_buffer.memory),
         @intCast(screen_buffer.window_width),
         @intCast(screen_buffer.window_height),
-        BitmapPad,
+        // the start of one scanline is separated in client memory from the start of the next scanline by an integer multiple of this many bits (8, 16, or 32)
+        // somehow 8 works better than 32?
+        8,
         @intCast(@sizeOf(u32) * screen_buffer.window_width),
     );
     _ = c.XPutImage(x11.display, x11.pixmap, x11.pixmap_gc, image, 0, 0, 0, 0, @intCast(screen_buffer.window_width), @intCast(screen_buffer.window_height));
