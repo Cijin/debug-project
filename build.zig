@@ -38,13 +38,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const truetype = truetype_dep.module("TrueType"); // main raylib module
+    const truetype = truetype_dep.module("TrueType");
     exe.root_module.addImport("TrueType", truetype);
 
-    // Todo: static linking?
-    exe.root_module.linkSystemLibrary("X11", .{ .needed = true });
+    exe.root_module.linkSystemLibrary("wayland-client", .{ .needed = true });
     exe.root_module.linkSystemLibrary("Xrandr", .{ .needed = true });
-    exe.root_module.linkSystemLibrary("Xrender", .{ .needed = true });
     exe.root_module.link_libc = true;
 
     // This declares intent for the executable to be installed into the
