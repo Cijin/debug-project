@@ -16,12 +16,12 @@ const Bg_r = (Bg >> 16) & 0xff;
 const Bg_g = (Bg >> 8) & 0xff;
 const Bg_b = Bg & 0xff;
 
-const FontColor = 0x00ff0000;
-const Fg_r: u32 = (FontColor >> 16) & 0xff;
-const Fg_g: u32 = (FontColor >> 8) & 0xff;
-const Fg_b: u32 = FontColor & 0xff;
+const Font_Color = 0x00ff0000;
+const Fg_r: u32 = (Font_Color >> 16) & 0xff;
+const Fg_g: u32 = (Font_Color >> 8) & 0xff;
+const Fg_b: u32 = Font_Color & 0xff;
 
-//fn render_fps_info(allocator: mem.Allocator, game_memory: *GameMemory, buffer: *OffScreenBuffer) void {
+//fn renderFpsInfo(allocator: mem.Allocator, game_memory: *GameMemory, buffer: *OffScreenBuffer) void {
 //    var text_buffer: std.ArrayList(u8) = .empty;
 //    defer text_buffer.deinit(allocator);
 //
@@ -84,7 +84,7 @@ const Fg_b: u32 = FontColor & 0xff;
 //    }
 //}
 
-//fn renderer_bg(buffer: OffScreenBuffer) void {
+//fn rendererBg(buffer: OffScreenBuffer) void {
 //    for (0..buffer.window_height) |i| {
 //        for (0..buffer.window_width) |j| {
 //            buffer.memory[i][j] = Bg;

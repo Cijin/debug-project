@@ -7,19 +7,17 @@ const mem = std.mem;
 const time = std.time;
 const math = std.math;
 const assert = std.debug.assert;
+const wayland = @import("wayland.zig");
 
 // https://codeberg.org/andrewrk/TrueType
 const TrueType = @import("TrueType");
 
-const c = @cImport({
-    // https://wayland.freedesktop.org/docs/html/apa.html
-    // https://wayland.freedesktop.org/
-    // Todo:
-    // * libwayland: xml (wayland) -> C
-    // * Find installed version of wayland
-    // * Generate XML??
-    @cInclude("wayland-client.h");
-});
+// https://wayland-book.com/
+// https://gaultier.github.io/blog/wayland_from_scratch.html
+// https://wayland.app/protocols/
+// Check if wayland: $XDG_SESSION_TYPE
+// Socket: $WAYLAND_DISPLAY
+// Path: $XDG_RUNTIME_DIR
 
 const FontPath = "font/font.ttf";
 const KiB = 1024;
@@ -30,14 +28,13 @@ const PixmapDepth = 32;
 const InitialWindowWidth = 960;
 const InitialWindowHeight = 480;
 
-const Wayland = struct {
-    refresh_rate: u32,
-    mpf: u32,
-};
-
 pub fn main() !u8 {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
+
+    const allocator = arena.allocator();
+
+    try wayland.conn(allocator);
 
     //var run_playback: bool = false;
     //var is_recording: bool = false;
@@ -46,19 +43,6 @@ pub fn main() !u8 {
     // Todo: replace max_size with file size
     //const font = try fs.cwd().readFileAlloc(arena.allocator(), FontPath, 1024 * 1024);
     //const ttf = try TrueType.load(font);
-
-    const display = c.wl_display_connect(null);
-    defer c.wl_display_disconnect(display);
-
-    std.debug.print("{any}\n", .{display});
-
-    const registry = c.wl_display_get_registry(display);
-    // Todo:
-    // Get compositor
-    // Get surface
-    // https://github.com/vvavrychuk/hello_wayland/blob/master/helpers.c#L176
-
-    std.debug.print("{any}\n", .{registry});
 
     //const quit = false;
     //var start_time = time.milliTimestamp();
@@ -88,7 +72,7 @@ pub fn main() !u8 {
     return 0;
 }
 
-fn get_memory(h: u32, w: u32, allocator: mem.Allocator) ![][]u32 {
+fn getMemory(h: u32, w: u32, allocator: mem.Allocator) ![][]u32 {
     var memory = try allocator.alloc([]u32, h);
     for (0..h) |i| {
         memory[i] = try allocator.alloc(u32, w);

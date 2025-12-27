@@ -41,7 +41,6 @@ pub fn build(b: *std.Build) void {
     const truetype = truetype_dep.module("TrueType");
     exe.root_module.addImport("TrueType", truetype);
 
-    exe.root_module.linkSystemLibrary("wayland-client", .{ .needed = true });
     exe.root_module.linkSystemLibrary("Xrandr", .{ .needed = true });
     exe.root_module.link_libc = true;
 
