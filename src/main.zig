@@ -5,11 +5,6 @@ const builtin = @import("builtin");
 const TrueType = @import("TrueType");
 
 const wayland = @import("wayland-client.zig");
-// https://wayland-book.com/
-// https://gaultier.github.io/blog/wayland_from_scratch.html
-// https://wayland.app/protocols/
-// Protocol
-// https://cgit.freedesktop.org/wayland/wayland/tree/protocol/wayland.xml?__goaway_challenge=meta-refresh&__goaway_id=f04f83ca8469c685ba05f5c30588e9d9&__goaway_referer=https%3A%2F%2Fduckduckgo.com%2F
 
 const FontPath = "font/font.ttf";
 const KiB = 1024;
@@ -64,6 +59,7 @@ pub fn main() !u8 {
     return 0;
 }
 
+// Todo: deinit previous memory
 fn getMemory(h: u32, w: u32, allocator: std.mem.Allocator) ![][]u32 {
     var memory = try allocator.alloc([]u32, h);
     for (0..h) |i| {
